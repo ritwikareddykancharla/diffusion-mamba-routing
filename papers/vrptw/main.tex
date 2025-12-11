@@ -1,0 +1,252 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ICML 2026 — Temporal Diffusion Models for VRPTW
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+% -------------------- PACKAGES --------------------
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{textcomp}
+
+% IMPORTANT: use exactly these to avoid conflicts
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+\usepackage{xcolor}
+\usepackage{mathtools}
+
+% -------------------- COMPACT LISTS --------------------
+\setlist{nosep,leftmargin=1.2em}
+
+% -------------------- ICML STYLE --------------------
+\usepackage[preprint]{icml2026}
+
+% -------------------- THEOREMS --------------------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+
+% -------------------- TITLE --------------------
+\icmltitlerunning{Temporal Diffusion Models for the VRP with Time Windows (VRPTW)}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{
+Temporal Diffusion Models for the Vehicle Routing Problem with Time Windows (VRPTW)
+}
+
+\begin{icmlauthorlist}
+\icmlauthor{Ritwika Kancharla}{ind}
+\end{icmlauthorlist}
+
+\icmlaffiliation{ind}{Independent Researcher}
+
+\icmlcorrespondingauthor{Ritwika Kancharla}{ritwikareddykancharla@gmail.com}
+
+\icmlkeywords{Diffusion Models, VRPTW, Routing Optimization, Temporal Constraints, Neural Combinatorial Optimization}
+
+\vskip 0.3in
+]
+\printAffiliationsAndNotice{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+We propose \textbf{Temporal Diffusion Models}, a generative optimization
+framework for the Vehicle Routing Problem with Time Windows (VRPTW).
+The method extends score-based diffusion to trajectory representations
+that couple spatial routing decisions with temporal feasibility.
+A lightweight temporal refinement module enforces arrival-time
+constraints and service windows via soft differentiable projection.
+The combined system generates feasible, high-quality VRPTW solutions
+using diffusion sampling, temporal consistency correction, and
+search-in-latent-space. We outline the modeling framework, temporal
+feasibility operators, and an evaluation protocol for VRPTW benchmarks.
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The Vehicle Routing Problem with Time Windows (VRPTW) extends classical
+VRP by requiring that each customer be visited within a specified interval.
+This temporal dimension introduces strong coupling between route order,
+travel times, and feasibility, making VRPTW substantially more challenging.
+
+Recent generative approaches for routing—particularly diffusion models—
+have shown promise in modeling combinatorial structures. However, existing 
+methods do not explicitly enforce the time-window constraints essential 
+to VRPTW feasibility. Time-window violations accumulate along routes 
+and propagate across the temporal dimension, requiring iterative correction.
+
+We propose \textbf{Temporal Diffusion Models}:  
+a hybrid generative framework combining diffusion priors with a temporal
+correction operator that enforces arrival-time consistency.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Background}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{VRPTW Definition}
+
+Given $N$ customers, each customer $i$ has:
+\begin{itemize}
+    \item demand $d_i$,
+    \item service time $s_i$,
+    \item time window $[a_i, b_i]$,
+    \item location $(x_i, y_i)$.
+\end{itemize}
+
+A solution must define feasible routes such that:
+\[
+a_i \le t_i \le b_i,
+\]
+where $t_i$ is the arrival time computed from previous stops.
+
+\subsection{Challenges}
+
+\begin{itemize}
+    \item Time propagation: arrival time depends on earlier route choices
+    \item Window constraints create nonlinear feasibility
+    \item Classical heuristics (e.g., Solomon, OR-Tools) require handcrafted logic
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Method: Temporal Diffusion Models}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We represent a VRPTW solution as:
+\[
+z = (r, t),
+\]
+where $r$ encodes the route ordering and $t$ encodes the corresponding
+arrival times.
+
+Diffusion models operate on these continuous latent states.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Latent Representation}
+
+\begin{itemize}
+    \item \textbf{Route latent} $r$: continuous embedding of route permutation
+    \item \textbf{Temporal latent} $t$: continuous approximation of arrival times
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Temporal Diffusion Process}
+
+We define a forward diffusion SDE:
+\[
+\mathrm{d}z = f(t) z\,\mathrm{d}t + g(t)\,\mathrm{d}w_t,
+\]
+and learn a score network $s_\theta(z,t)$.
+
+The model learns correlations between spatial structure and temporal order.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Temporal Feasibility Projection}
+
+A differentiable projection operator corrects time-window violations.
+
+Given arrival times $t_i$:
+\[
+t_i' = \min\big(b_i, \max(a_i, t_i)\big).
+\]
+
+A smoother form:
+\[
+t_i' = t_i - \eta (t_i - b_i)_+ + \eta (a_i - t_i)_+.
+\]
+
+We apply this operator inside the refinement loop.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Temporal Refinement Module}
+
+Analogous to Mamba for CVRP, we define a small temporal SSM:
+\[
+t^{(k+1)} = t^{(k)} + \Phi_\psi(z^{(k)}, \text{travel time matrix}),
+\]
+where $\Phi_\psi$ learns to correct accumulated timing errors.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Latent Search \& Rounding}
+
+Multiple latent candidates are generated, refined, and discretized using:
+\begin{enumerate}
+    \item greedy insertion respecting earliest start times,
+    \item local moves (swap, relocate, 2-opt) guided by temporal cost.
+\end{enumerate}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Algorithm}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{algorithm}[H]
+\caption{Temporal Diffusion Model for VRPTW}
+\label{alg:vrptw}
+\begin{algorithmic}[1]
+\STATE Sample latent $(r_T, t_T)$ from noise
+\FOR{$t = T$ down to $1$}
+    \STATE $(r_{t-1}, t_{t-1}) \gets \text{DDIMStep}(r_t, t_t)$
+    \STATE $t_{t-1} \gets \text{TemporalRefine}(t_{t-1})$
+    \STATE $t_{t-1} \gets \text{WindowProject}(t_{t-1})$
+\ENDFOR
+\STATE Round $(r_0, t_0)$ into discrete VRPTW routes
+\STATE \textbf{return} best feasible solution
+\end{algorithmic}
+\end{algorithm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Experiments}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We propose evaluation on:
+
+\begin{itemize}
+    \item Solomon benchmarks (C1, R1, RC1 sets)
+    \item Homberger 200, 400, 600 customer sets
+    \item OR-Tools VRPTW
+\end{itemize}
+
+Baselines include:
+\begin{itemize}
+    \item Solomon heuristics
+    \item Large Neighborhood Search (LNS)
+    \item OR-Tools Constraint Solver
+    \item Neural baselines (Attention Model, NCO)
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Discussion and Future Work}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Extensions:
+\begin{itemize}
+    \item combining temporal and capacity refinement,
+    \item dynamic VRPTW with streaming arrivals,
+    \item diffusion priors with Mamba SSM for better constraint coupling.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliography{references}
+\bibliographystyle{icml2026}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\appendix
+\onecolumn
+
+\section{Appendix}
+Additional algorithms, time-projection proofs, architecture diagrams.
+
+\end{document}
