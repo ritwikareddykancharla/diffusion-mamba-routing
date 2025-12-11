@@ -1,0 +1,271 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ICML 2026 — Diffusion-Based Optimization for the PDVRP
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+% -------------------- PACKAGES --------------------
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{textcomp}
+
+% IMPORTANT: identical to your working setup
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+\usepackage{xcolor}
+\usepackage{mathtools}
+
+% -------------------- COMPACT LISTS --------------------
+\setlist{nosep,leftmargin=1.2em}
+
+% -------------------- ICML STYLE --------------------
+\usepackage[preprint]{icml2026}
+
+% -------------------- THEOREMS --------------------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+
+% -------------------- TITLE --------------------
+\icmltitlerunning{Diffusion-Based Optimization for the Pickup–Delivery VRP (PDVRP)}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{
+Diffusion-Based Optimization for the Pickup–Delivery Vehicle Routing Problem (PDVRP)
+}
+
+\begin{icmlauthorlist}
+\icmlauthor{Ritwika Kancharla}{ind}
+\end{icmlauthorlist}
+
+\icmlaffiliation{ind}{Independent Researcher}
+\icmlcorrespondingauthor{Ritwika Kancharla}{ritwikareddykancharla@gmail.com}
+
+\icmlkeywords{Diffusion Models, PDVRP, Pickup–Delivery Constraints, Neural Routing, Combinatorial Optimization}
+
+\vskip 0.3in
+]
+\printAffiliationsAndNotice{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+We propose a \textbf{Diffusion-Based Optimization} framework for the 
+Pickup–Delivery Vehicle Routing Problem (PDVRP), where each customer 
+request consists of a paired pickup and drop-off location with 
+precedence and load-flow constraints. Our method models PDVRP routes 
+as continuous latent trajectories, applies score-based diffusion to 
+generate global proposals, and incorporates a differentiable 
+pickup–delivery feasibility operator to enforce precedence and vehicle 
+load consistency. A lightweight refinement module corrects feasibility 
+violations across both spatial and precedence dimensions, and a 
+search-in-latent-space stage yields high-quality discrete PDVRP 
+solutions. We outline the full method and provide an evaluation protocol 
+for PDVRP benchmarks.
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The Pickup–Delivery Vehicle Routing Problem (PDVRP) generalizes CVRP by 
+requiring each request $(p_i, d_i)$ to be visited in a strict order 
+(pickup first, then delivery), while ensuring vehicle capacity and 
+route feasibility. PDVRP is used in ride-sharing, logistics, courier 
+services, and robotics planning.
+
+Diffusion models have recently emerged as strong generative priors for 
+structured combinatorial problems. However, existing models do not 
+explicitly enforce PDVRP structure—especially precedence and vehicle 
+load flow.
+
+We present a diffusion-based framework that treats route + precedence 
+structure as a continuous latent, enabling joint spatial + logical 
+learning.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Background: The PDVRP}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Each request $i$ has:
+\begin{itemize}
+    \item pickup node $p_i$,
+    \item delivery node $d_i$,
+    \item load $q_i > 0$,
+    \item precedence: $p_i$ must occur before $d_i$,
+    \item load consistency: cumulative load never exceeds vehicle capacity.
+\end{itemize}
+
+These constraints induce strong dependencies between route orderings.
+
+Classical methods rely on:
+\begin{itemize}
+    \item insertion heuristics,
+    \item constraint propagation,
+    \item local neighborhood search with feasibility repair,
+    \item or MIP formulations with precedence constraints.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Method: Diffusion for Pickup–Delivery Routing}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We represent a solution as:
+\[
+z = (r, \ell),
+\]
+where:
+\begin{itemize}
+    \item $r$ = continuous route ordering latent  
+    \item $\ell$ = continuous vehicle load trajectory across the route
+\end{itemize}
+
+Diffusion models generate $(r, \ell)$ jointly.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Pickup–Delivery Latent Structure}
+
+Pickup–delivery introduces two structural challenges:
+
+\begin{enumerate}
+    \item \textbf{Precedence:} pickup before delivery  
+    \item \textbf{Load flow:} cumulative load increases at pickups and decreases at deliveries
+\end{enumerate}
+
+We embed these structures inside the latent via:
+\begin{itemize}
+    \item continuous timestamps for pickup and delivery,
+    \item soft load-adjustment variables,
+    \item hard masks preventing invalid pairing.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Score-Based Diffusion Process}
+
+We apply a forward SDE:
+\[
+\mathrm{d}z = f(t) z\,\mathrm{d}t + g(t)\,\mathrm{d}w_t,
+\]
+and learn the score $s_\theta(z,t)$ to denoise paired latent states.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Pickup–Delivery Feasibility Operator}
+
+We introduce a differentiable feasibility projection operator:
+\[
+r' = \text{EnforcePrecedence}(r), \qquad 
+\ell' = \text{EnforceLoadFlow}(r', \ell)
+\]
+
+Soft precedence:
+\[
+r_{p_i} \leftarrow \min(r_{p_i},\; r_{d_i} - \epsilon).
+\]
+
+Load-flow consistency:
+\[
+\ell_k' = \ell_{k-1}' + \Delta_k,
+\]
+where $\Delta_k = +q_i$ for pickup, $-q_i$ for delivery.
+
+We softly penalize violations:
+\[
+\mathcal{L}_{\text{prec}} = \sum_i \max(0, r_{p_i} - r_{d_i})
+\]
+\[
+\mathcal{L}_{\text{load}} = \sum_k \max(0,\; \ell_k - C)
+\]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Refinement Module}
+
+A small residual network or SSM performs iterative clean-up:
+\[
+z^{(t+1)} = z^{(t)} + \Phi_\psi(z^{(t)}, \text{graph})
+\]
+
+The refinement helps correct small violations left by diffusion sampling.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Latent Search \& Rounding}
+
+We generate $K$ latent candidates with diffusion sampling, refine them,
+and round using:
+\begin{itemize}
+    \item precedence-respecting greedy insertion,
+    \item PD-specific 2-opt, relocate, and swap operators,
+    \item load-feasibility pruning.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Algorithm}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{algorithm}[H]
+\caption{Diffusion-Based PDVRP Solver}
+\label{alg:pdvrp}
+\begin{algorithmic}[1]
+\STATE Sample $(r_T, \ell_T)$ from Gaussian noise
+\FOR{$t = T$ down to $1$}
+    \STATE $(r_{t-1}, \ell_{t-1}) \gets \text{DDIMStep}(r_t, \ell_t)$
+    \STATE $(r_{t-1}, \ell_{t-1}) \gets \text{PrecedenceProject}(r_{t-1}, \ell_{t-1})$
+    \STATE $(r_{t-1}, \ell_{t-1}) \gets \text{LoadFlowProject}(r_{t-1}, \ell_{t-1})$
+    \STATE $(r_{t-1}, \ell_{t-1}) \gets \text{Refine}(r_{t-1}, \ell_{t-1})$
+\ENDFOR
+\STATE Round $(r_0, \ell_0)$ into discrete pickup–delivery routes
+\STATE \textbf{return} best feasible solution
+\end{algorithmic}
+\end{algorithm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Experiments}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Evaluate on:
+\begin{itemize}
+    \item Li–Lim PDVRP benchmark sets,
+    \item PDPTW variants,
+    \item OR-Tools pickup–delivery routing.
+\end{itemize}
+
+Compare with:
+\begin{itemize}
+    \item OR-Tools CP-SAT PDVRP,
+    \item LNS for PDVRP,
+    \item Neural baselines (Attention Model, NCO).
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Discussion \& Future Work}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Future directions:
+\begin{itemize}
+    \item multi-vehicle consistency with time windows,
+    \item diffusion + Mamba hybrid for temporal-flow coupling,
+    \item joint PDVRP + capacity + time-window routing foundation model.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliography{references}
+\bibliographystyle{icml2026}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\appendix
+\onecolumn
+
+\section{Appendix}
+More figures, definitions, constraint operator proofs.
+
+\end{document}

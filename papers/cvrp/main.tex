@@ -1,0 +1,143 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ICML 2026 — Diffusion–Mamba CVRP Paper Skeleton
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+% -------------------- PACKAGES --------------------
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{textcomp}
+
+% IMPORTANT: use *exactly* these two to match your working setup
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+\usepackage{xcolor}
+\usepackage{mathtools}
+
+% -------------------- COMPACT LISTS --------------------
+\setlist{nosep,leftmargin=1.2em}
+
+% -------------------- ICML STYLE --------------------
+\usepackage[preprint]{icml2026}
+
+% -------------------- THEOREMS --------------------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+
+% -------------------- TITLE --------------------
+\icmltitlerunning{Diffusion--Mamba Optimization for CVRP}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{
+Diffusion--Mamba Optimization for the Capacitated Vehicle Routing Problem (CVRP)
+}
+
+\begin{icmlauthorlist}
+\icmlauthor{Ritwika Kancharla}{ind}
+\icmlaffiliation{ind}{Independent Researcher}
+\end{icmlauthorlist}
+
+\icmlcorrespondingauthor{Ritwika Kancharla}{ritwikareddykancharla@gmail.com}
+
+\icmlkeywords{Diffusion Models, Mamba SSM, Vehicle Routing, CVRP, Neural Optimization}
+
+\vskip 0.3in
+]
+\printAffiliationsAndNotice{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+We propose \textbf{Diffusion--Mamba}, a hybrid generative optimization
+framework for the Capacitated Vehicle Routing Problem (CVRP).
+The method couples score-based diffusion priors with a lightweight
+Mamba state-space refinement module that enforces capacity and routing
+constraints via differentiable projections. The model performs
+iterative feasibility-aware refinement and latent-space search to
+produce high-quality discrete CVRP solutions. We outline the
+architecture, its optimization interpretation, and an evaluation
+protocol for benchmarking CVRP solvers.
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% [PUT YOUR INTRO HERE]
+CVRP fundamental, traditional heuristics, diffusion generative priors,
+Mamba for constraint enforcement, etc.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Background: CVRP and Neural Routing}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% [WRITE WHATEVER]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Method: Diffusion--Mamba}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Continuous Route Latent Representation}
+
+\subsection{Diffusion Prior}
+
+\subsection{Mamba Refinement for Constraint Enforcement}
+
+\subsection{Latent Search \& Rounding}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Algorithm}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{algorithm}[H]
+\caption{Diffusion--Mamba Inference Pipeline}
+\label{alg:dm}
+\begin{algorithmic}[1]
+\STATE Sample initial latent $z_T$
+\FOR{$t = T$ down to $1$}
+    \STATE $z_{t-1} \leftarrow \text{DDIMStep}(z_t)$
+    \STATE $z_{t-1} \leftarrow z_{t-1} + \text{MambaRefine}(z_{t-1})$
+    \STATE $z_{t-1} \leftarrow \text{CapacityProject}(z_{t-1})$
+\ENDFOR
+\STATE Round $z_0$ to discrete CVRP tours
+\STATE \textbf{return} best solution
+\end{algorithmic}
+\end{algorithm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Experiments}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Describe CVRP20/50/100, baselines (OR-Tools, LKH3, Kool Attention Model).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Discussion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Future work: VRPTW, PDVRP, MDVRP, Dynamic VRP.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliography{references}
+\bibliographystyle{icml2026}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\appendix
+\onecolumn
+
+\section{Appendix: Additional Details}
+Additional proofs, diagrams, algorithms, etc.
+
+\end{document}

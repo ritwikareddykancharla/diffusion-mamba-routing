@@ -1,0 +1,291 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ICML 2026 — Diffusion–Mamba Models for the MDVRP
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+% -------------------- PACKAGES --------------------
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{textcomp}
+
+% IMPORTANT: same as your working setup
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+\usepackage{xcolor}
+\usepackage{mathtools}
+
+% -------------------- COMPACT LISTS --------------------
+\setlist{nosep,leftmargin=1.2em}
+
+% -------------------- ICML STYLE --------------------
+\usepackage[preprint]{icml2026}
+
+% -------------------- THEOREMS --------------------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+
+% -------------------- TITLE --------------------
+\icmltitlerunning{Diffusion–Mamba Models for the Multi-Depot VRP}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{
+Diffusion–Mamba Models for the Multi-Depot Vehicle Routing Problem (MDVRP)
+}
+
+\begin{icmlauthorlist}
+\icmlauthor{Ritwika Kancharla}{ind}
+\end{icmlauthorlist}
+
+\icmlaffiliation{ind}{Independent Researcher}
+
+\icmlcorrespondingauthor{Ritwika Kancharla}{ritwikareddykancharla@gmail.com}
+
+\icmlkeywords{MDVRP, Diffusion Models, Mamba SSM, Multi-Depot Routing, Combinatorial Optimization}
+
+\vskip 0.3in
+]
+\printAffiliationsAndNotice{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+The Multi-Depot Vehicle Routing Problem (MDVRP) requires assigning
+customers to depots and constructing feasible vehicle routes within each
+depot's region. Classical heuristics decouple depot assignment from
+route construction, but this separation causes suboptimal global
+solutions. We propose \textbf{Diffusion–Mamba MDVRP Models}, which treat
+MDVRP as a joint generative process: a diffusion prior generates
+continuous depot–route latents, and a Mamba-based refinement module
+enforces depot consistency, capacity feasibility, and cross-depot
+balancing. The approach supports multi-modal depot assignments, 
+iterative route refinement, and latent-space search. We outline the 
+architecture, feasibility operators, and an evaluation protocol for 
+MDVRP benchmarks.
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Multi-depot routing problems arise in last-mile delivery, warehouse
+assignment, regional logistics, and airline/rail dispatching. The core
+challenge is \textit{jointly} optimizing:
+\begin{enumerate}
+    \item which depot each customer is assigned to, and  
+    \item the route structure \emph{within} each depot's service region.
+\end{enumerate}
+
+Traditional solvers often use:
+\begin{itemize}
+    \item clustering (k-means, sweep),  
+    \item separate CVRP solving per cluster,  
+    \item or MDVRP-specific LNS heuristics.  
+\end{itemize}
+
+These methods decouple assignment and routing, leading to suboptimal global cost.
+
+Diffusion and SSM-based refinement models offer a path toward globally 
+consistent, joint generative routing.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Background: The Multi-Depot VRP}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+MDVRP extends CVRP with:
+\begin{itemize}
+    \item a set of depots $D$,  
+    \item a set of customers $V$,  
+    \item per-depot fleets and vehicle limits,  
+    \item capacity and routing constraints within each depot.  
+\end{itemize}
+
+Key constraints:
+
+\begin{enumerate}
+    \item Each customer is assigned to exactly one depot.
+    \item Routes start and end at their assigned depot.
+    \item Vehicle capacity constraints per route.
+    \item Depot-level fleet constraints.
+\end{enumerate}
+
+This introduces strong combinatorial coupling between customer clustering
+and route optimization.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Method: Diffusion–Mamba for MDVRP}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We represent a solution latent as:
+\[
+z = (r, a)
+\]
+where:
+\begin{itemize}
+    \item $r$ = route latent structure (continuous CVRP-like ordering)
+    \item $a$ = depot assignment logits for each customer
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Latent Depot Assignment}
+
+We use soft assignment logits:
+\[
+a_i \in \mathbb{R}^{|D|}
+\]
+which are normalized by softmax.
+
+At final rounding, each customer is assigned to:
+\[
+\hat{d}_i = \arg\max_j a_{ij}.
+\]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Diffusion over Joint Depot + Route Latents}
+
+We diffuse over:
+\[
+z = (r, a)
+\]
+using a continuous-time SDE:
+\[
+\mathrm{d}z = f(t) z \,\mathrm{d}t + g(t)\,\mathrm{d}w_t.
+\]
+
+The score network learns spatial, cluster, and assignment geometry.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Multi-Depot Feasibility Operator}
+
+We define a differentiable feasibility projection enforcing:
+
+\paragraph{1. Depot assignment consistency.}
+Soft projection:
+\[
+a_i' = \mathrm{softmax}(a_i / \tau)
+\]
+
+\paragraph{2. Route–depot compatibility.}
+If route latent $r$ tries to connect customers from different depots,
+we apply a soft repulsion penalty:
+\[
+\mathcal{L}_{\text{cross}} = \sum_{(i,j)} 
+\mathbb{1}[d_i \ne d_j] \cdot \mathrm{sim}(r_i, r_j)
+\]
+
+\paragraph{3. Load feasibility.}
+Each depot’s routes satisfy their own CVRP constraints:
+\[
+\ell_k' = \ell_{k-1}' + q_i.
+\]
+
+We reuse the CVRP load-projection from earlier papers.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Mamba Refinement for Cross-Depot Structure}
+
+We introduce a Multi-Depot Mamba module:
+\[
+z^{(t+1)} = z^{(t)} + \Phi_\psi(z^{(t)}, \text{depot graph})
+\]
+
+This module learns:
+\begin{itemize}
+    \item depot balancing signals,  
+    \item cluster tightening,  
+    \item cross-depot swap suggestions,  
+    \item load feasibility cleanup per depot.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Latent Search \& Rounding}
+
+After sampling and refinement:
+
+\begin{enumerate}
+    \item Assign customers to depots based on $a$.
+    \item For each depot, extract CVRP route using its local $r$ latent.
+    \item Apply MDVRP-specific local search moves:
+          \begin{itemize}
+              \item cross-depot relocate  
+              \item swap  
+              \item 2-opt per depot  
+          \end{itemize}
+\end{enumerate}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Algorithm}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{algorithm}[H]
+\caption{Diffusion–Mamba MDVRP Solver}
+\label{alg:mdvrp}
+\begin{algorithmic}[1]
+\STATE Sample latent $(r_T, a_T)$ from noise
+\FOR{$t = T$ down to $1$}
+    \STATE $(r_{t-1}, a_{t-1}) \gets \text{DDIMStep}(r_t, a_t)$
+    \STATE $(r_{t-1}, a_{t-1}) \gets \text{DepotProject}(r_{t-1}, a_{t-1})$
+    \STATE $(r_{t-1}, a_{t-1}) \gets \text{LoadProject}(r_{t-1}, a_{t-1})$
+    \STATE $(r_{t-1}, a_{t-1}) \gets \text{MambaRefine}(r_{t-1}, a_{t-1})$
+\ENDFOR
+\STATE Round to discrete routes per depot
+\STATE Apply MDVRP local search moves
+\STATE \textbf{return} best feasible solution
+\end{algorithmic}
+\end{algorithm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Experiments}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We evaluate on:
+\begin{itemize}
+    \item Cordeau MDVRP benchmark sets,
+    \item PD-MDVRP hybrid sets,
+    \item OR-Tools MDVRP (multi-depot constraint solver).
+\end{itemize}
+
+Baselines:
+\begin{itemize}
+    \item LNS for MDVRP  
+    \item Clustering + CVRP solvers  
+    \item Hybrid heuristics (sweep, granular tabu)  
+    \item Neural CO baselines (Attention, GNN-based MDVRP models)
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Discussion \& Future Work}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Promising directions:
+\begin{itemize}
+    \item joint training across CVRP, PDVRP, MDVRP distributions,
+    \item Mamba-based cross-depot communication blocks,
+    \item diffusion trajectory guidance for cross-depot swaps,
+    \item unifying MDVRP into a routing foundation model.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliography{references}
+\bibliographystyle{icml2026}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\appendix
+\onecolumn
+
+\section{Appendix}
+Additional proofs, constraints, ablations.
+
+\end{document}

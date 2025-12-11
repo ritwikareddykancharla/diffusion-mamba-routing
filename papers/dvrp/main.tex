@@ -1,0 +1,290 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ICML 2026 — Online Diffusion Routing for the Dynamic VRP
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{textcomp}
+
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+\usepackage{xcolor}
+\usepackage{mathtools}
+
+\setlist{nosep,leftmargin=1.2em}
+
+\usepackage[preprint]{icml2026}
+
+\newtheorem{theorem}{Theorem}[section]
+
+\icmltitlerunning{Online Diffusion Routing for the DVRP}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{
+Online Diffusion Routing for the Dynamic Vehicle Routing Problem (DVRP)
+}
+
+\begin{icmlauthorlist}
+\icmlauthor{Ritwika Kancharla}{ind}
+\end{icmlauthorlist}
+
+\icmlaffiliation{ind}{Independent Researcher}
+\icmlcorrespondingauthor{Ritwika Kancharla}{ritwikareddykancharla@gmail.com}
+
+\icmlkeywords{Dynamic VRP, Online Routing, Diffusion Models, World Models, Mamba SSM}
+
+\vskip 0.3in
+]
+\printAffiliationsAndNotice{}
+
+\begin{abstract}
+We propose \textbf{Online Diffusion Routing}, a generative optimization 
+framework for the Dynamic Vehicle Routing Problem (DVRP), where customer 
+requests arrive over time and routing decisions must be updated 
+continuously. Our method integrates score-based diffusion sampling, a 
+temporal world model based on Mamba state-space dynamics, and a 
+differentiable feasibility operator for real-time correction. The model 
+performs online latent rollout, anticipatory reasoning, and rapid 
+re-routing. We present the architecture, algorithmic details, and an 
+evaluation protocol for dynamic routing environments.
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Dynamic VRP involves continuously updating vehicle routes as new 
+requests, traffic conditions, and constraints evolve. Classical VRP 
+methods cannot react quickly enough, while RL methods require expensive 
+retraining. Diffusion models combined with lightweight SSM refinement 
+enable fast and flexible real-time routing.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Dynamic VRP Setting}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+At each time step $t$:
+\begin{itemize}
+    \item new customers arrive,
+    \item travel times update,
+    \item vehicles move according to previous assignments,
+    \item a new routing decision must be computed under real-time latency.
+\end{itemize}
+
+State:
+\[
+s_t = (V_t, E_t, R_t, U_t).
+\]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Method: Online Diffusion Routing}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Latent representation:
+\[
+z_t = (r_t, h_t)
+\]
+where $r_t$ is a route latent and $h_t$ is a world-model memory state.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Temporal Diffusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We denoise a latent trajectory conditioned on the current state:
+\[
+p(z_{t+1} \mid z_t, s_t).
+\]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Mamba-Based World Model}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Predicts short-horizon:
+\begin{itemize}
+    \item request arrivals,
+    \item traffic changes,
+    \item load evolution.
+\end{itemize}
+
+\[
+h_{t+1} = \Phi_\psi(h_t, s_t).
+\]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Online Feasibility Projection}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\[
+z_t' = \text{ProjectFeasible}(z_t)
+\]
+
+Capacity, time windows (if present), and real-time vehicle locality.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Mamba Refinement}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\[
+z_{t+1} = z_t' + \Phi_{\text{mamba}}(z_t', s_t).
+\]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Algorithm}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{algorithm}[H]
+\caption{Online Diffusion Routing for DVRP}
+\label{alg:dvrp}
+\begin{algorithmic}[1]
+\STATE Initialize $(r_0, h_0)$.
+\FOR{$t = 1$ to $T$}
+    \STATE Observe new customers and travel times.
+    \STATE $h_t \gets \text{WorldModel}(h_{t-1}, s_t)$
+    \STATE $z_t \gets \text{DiffusionSample}(z_{t-1}, h_t)$
+    \STATE $z_t \gets \text{ProjectFeasible}(z_t)$
+    \STATE $z_t \gets \text{MambaRefine}(z_t, s_t)$
+    \STATE $a_t \gets \text{DecodeRoute}(z_t)$
+    \STATE Execute $a_t$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Extensions}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+While we focus on the classical Dynamic VRP (DVRP) setting—online
+arrival of customer requests and continuous re-optimization—the proposed
+Online Diffusion Routing framework naturally extends to significantly
+harder variants encountered in real logistics systems. We describe several
+extensions that demonstrate the generality of our approach and outline
+directions for future research.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Dynamic VRP with Time Windows (DVRPTW)}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Many real-world systems, including Amazon middle-mile and last-mile
+operations, require strict service windows. Incorporating time windows
+into DVRP introduces multi-scale temporal coupling: each new request
+alters both the feasible arrival-time distribution and the remaining
+slack for future customers. Our diffusion model can incorporate window
+constraints via conditional denoising and time-window projection
+operators:
+\[
+t_i' = \mathrm{clip}(t_i, a_i, b_i).
+\]
+Online refinement then enforces feasibility as new requests appear.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Stochastic DVRP with Demand Forecasting}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Instead of reacting to observed requests only, a more realistic setting
+includes a request arrival model:
+\[
+p(x_{t+1} \mid x_{1:t})
+\]
+where customers appear according to learned intensity functions. Our
+Mamba world model provides short-horizon demand forecasts, enabling
+anticipatory routing. Diffusion rollouts evaluate thousands of potential
+future scenarios cheaply, allowing proactive vehicle repositioning.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Dynamic Pickup--Delivery VRP (DPDVRP)}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+In many courier and ridesharing settings, requests consist of a pickup
+and a delivery node with precedence constraints. Dynamic versions of
+PDVRP require online feasibility repair and real-time precedence-aware
+routing. Our method supports this by extending the latent structure with
+precedence encodings and using differentiable pickup–delivery projection.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Fleet Heterogeneity and Multi-Depot DVRP}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Real fleets contain heterogeneous vehicles with different capacities,
+speeds, costs, and access rules. Multiple depots may operate
+simultaneously, each with its own fleet. Our diffusion model can embed
+heterogeneity through conditional route embeddings, while Mamba
+refinement handles cross-depot balancing during online decisions.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Dynamic Traffic and Travel-Time Uncertainty}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Travel times often evolve with congestion, weather, or incidents.
+By conditioning the world model and diffusion denoiser on real-time 
+network-state embeddings, Online Diffusion Routing can adapt reactively
+to shocks and anticipate route breakages. This effectively turns DVRP 
+into a partially-observed stochastic control problem.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Long-Horizon Planning via Diffusion Rollouts}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Diffusion sampling can generate multiple plausible future trajectories
+of customer arrivals and vehicle states. Using these rollouts,
+the router evaluates long-horizon value under uncertainty and chooses
+actions that minimize expected downstream cost. This connects DVRP to
+model-based RL while retaining the structure of combinatorial
+optimization.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Toward a Universal Real-Time Routing Foundation Model}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+All of the above variants—DVRPTW, stochastic DVRP, pickup–delivery,
+multi-depot, and heterogeneous fleets—can be unified into a single
+diffusion–SSM architecture conditioned on context embeddings. This
+enables a routing foundation model capable of adapting to diverse
+logistics environments via fine-tuning or in-context optimization.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Experiments}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+We evaluate on:
+\begin{itemize}
+    \item OR-Tools Dynamic VRP,
+    \item stochastic online benchmarks,
+    \item courier/taxi real-world datasets.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Discussion and Future Work}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Potential directions include DVRPTW, multi-depot dynamic routing, 
+anticipatory repositioning, and diffusion world models.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bibliography{references}
+\bibliographystyle{icml2026}
+
+\appendix
+\onecolumn
+
+\section{Appendix}
+Additional plots and ablations.
+
+\end{document}
